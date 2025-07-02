@@ -130,8 +130,9 @@ Newton-Raphson Iteration:
 ### 1. Main Nonlinear Solver
 **`solve_IGAHSDTShellNLinear.m`**
 - Implements Newton-Raphson iteration with load stepping
+- **Automatic center point tracking** for load-displacement curves
 - Manages convergence criteria and iteration history
-- Outputs: displacement field, convergence history, load-displacement curves
+- Outputs: displacement field, convergence history, **center displacement tracking**
 
 ### 2. Tangent Stiffness and Residual Computation
 **`computeTangentStiffMtxResVctIGAHSDTShellNLinear.m`**
@@ -156,9 +157,17 @@ Newton-Raphson Iteration:
 - Element tangent stiffness: material + geometric contributions
 - Element internal forces from virtual work principle
 
+### 6. Load-Displacement Tracking System
+**`plotLoadDisplacementHistory.m`**
+- **Automatic center point identification** (no manual setup required)
+- Real-time displacement tracking during Newton-Raphson iterations
+- Comprehensive convergence analysis with visual indicators
+- Linear vs nonlinear comparison capabilities
+- Stiffness evolution analysis and trend detection
+
 ## Usage Examples
 
-### Basic Nonlinear HSDT Analysis
+### Basic Nonlinear HSDT Analysis with Center Tracking
 
 ```matlab
 %% Setup nonlinear analysis parameters
@@ -167,8 +176,9 @@ propNLinearAnalysis.noLoadSteps = 10;
 propNLinearAnalysis.eps = 1e-6;
 propNLinearAnalysis.maxIter = 20;
 
-%% Solve nonlinear system
-[dHat, CPHistory, resHistory, isConverged] = solve_IGAHSDTShellNLinear...
+%% Solve nonlinear system with automatic center tracking
+[dHat, CPHistory, resHistory, isConverged, BSplinePatch, minElSize, ...
+ centerDisplacementHistory, loadHistory] = solve_IGAHSDTShellNLinear...
     (BSplinePatch, propNLinearAnalysis, @solve_LinearSystemMatlabBackslashSolver, ...
      'undefined', graph, 'outputEnabled');
 
@@ -178,6 +188,15 @@ v = dHat(2:5:end);      % v-displacements
 w = dHat(3:5:end);      % w-displacements
 theta_x = dHat(4:5:end); % θx-rotations
 theta_y = dHat(5:5:end); % θy-rotations
+
+%% Center point analysis (automatically provided)
+fprintf('Center displacement: %.3f mm\n', abs(centerDisplacementHistory(end)) * 1000);
+fprintf('Load steps converged: %d/%d\n', sum(isConverged), length(isConverged));
+
+%% Generate comprehensive load-displacement analysis
+plotLoadDisplacementHistory(centerDisplacementHistory, loadHistory, ...
+                           isConverged, BSplinePatch, propNLinearAnalysis, ...
+                           true, linearCenterDisplacement);
 ```
 
 ### Scordelis-Lo Roof Analysis
@@ -288,7 +307,19 @@ The nonlinear HSDT implementation provides a robust framework for large deformat
 - ✅ **Complete 5 DOF formulation** with independent rotations
 - ✅ **Geometric nonlinearity** through Green-Lagrange strains
 - ✅ **Newton-Raphson solver** with load stepping
+- ✅ **Automatic load-displacement tracking** for center point analysis
+- ✅ **Real-time convergence monitoring** with comprehensive visualization
+- ✅ **Linear vs nonlinear comparison** capabilities
+- ✅ **Stiffness evolution analysis** and nonlinearity assessment
 - ✅ **Validated implementation** against standard benchmarks
 - ✅ **Comprehensive documentation** and examples
 
-This implementation significantly extends the capabilities of cane Multiphysics for thick shell analysis and large deformation problems while maintaining computational efficiency and accuracy.
+### Key Load-Displacement Features:
+- **Zero Setup Required**: Automatically identifies center control point
+- **Real-Time Tracking**: Monitors displacement during each Newton-Raphson iteration
+- **Comprehensive Visualization**: Multi-panel plots showing load-displacement curves, convergence history, and stiffness evolution
+- **Intelligent Analysis**: Automatic detection of stiffness softening/hardening trends
+- **Comparison Tools**: Direct comparison with linear analysis results
+- **Export Capabilities**: All tracking data saved for post-processing
+
+This implementation significantly extends the capabilities of cane Multiphysics for thick shell analysis and large deformation problems while providing immediate visual feedback on nonlinear behavior and maintaining computational efficiency and accuracy.

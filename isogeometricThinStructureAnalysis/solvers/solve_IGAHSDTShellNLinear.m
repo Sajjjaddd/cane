@@ -1,4 +1,5 @@
-function [dHat, CPHistory, resHistory, isConverged, BSplinePatch, minElSize] = ...
+function [dHat, CPHistory, resHistory, isConverged, BSplinePatch, minElSize, ...
+          centerDisplacementHistory, loadHistory] = ...
     solve_IGAHSDTShellNLinear...
     (BSplinePatch, propNLinearAnalysis, solve_LinearSystem, ...
     plot_IGANonlinear, graph, outMsg)
@@ -35,6 +36,8 @@ function [dHat, CPHistory, resHistory, isConverged, BSplinePatch, minElSize] = .
 %          isConverged : Convergence flag for each load step
 %         BSplinePatch : Updated patch structure
 %             minElSize : Minimum element size
+% centerDisplacementHistory : Center point w-displacement history
+%          loadHistory : Load factor history for each converged step
 %
 % Function layout:
 %
@@ -126,6 +129,13 @@ loadFactors = loadFactors(2:end);  % Remove zero load factor
 CPHistory = zeros(numDOFs, noLoadSteps);
 resHistory = zeros(maxIterations, noLoadSteps);
 isConverged = false(noLoadSteps, 1);
+
+% Center point tracking for load-displacement curve
+centerCP_xi = ceil(numCPs_xi / 2);
+centerCP_eta = ceil(numCPs_eta / 2);
+centerDOF_w = BSplinePatch.DOFNumbering(centerCP_xi, centerCP_eta, 3); % w-displacement
+centerDisplacementHistory = zeros(noLoadSteps, 1);
+loadHistory = zeros(noLoadSteps, 1);
 
 % Dummy variables for compatibility
 dHatSaved = 'undefined';
@@ -234,15 +244,25 @@ for iLoadStep = 1:noLoadSteps
     isConverged(iLoadStep) = isLoadStepConverged;
     CPHistory(:, iLoadStep) = dHat;
     
+    % Store center displacement and current load for load-displacement curve
+    centerDisplacementHistory(iLoadStep) = dHat(centerDOF_w);
+    loadHistory(iLoadStep) = currentLoadFactor;
+    
     if ~isLoadStepConverged
         warning('Load step %d did not converge after %d iterations', ...
                 iLoadStep, maxIterations);
     end
     
-    % Optional plotting
+    % Optional plotting during iterations
     if ~strcmp(plot_IGANonlinear, 'undefined') && strcmp(outMsg, 'outputEnabled')
         % Call plotting function if provided
         % plot_IGANonlinear(BSplinePatch, dHat, graph, iLoadStep);
+    end
+    
+    % Print load step summary
+    if strcmp(outMsg, 'outputEnabled')
+        fprintf('    Load Step %d: Load Factor = %.4f, Center w = %.6e\n', ...
+                iLoadStep, currentLoadFactor, centerDisplacementHistory(iLoadStep));
     end
     
 end  % End load stepping loop
@@ -277,6 +297,108 @@ if strcmp(outMsg, 'outputEnabled')
     
     fprintf('\n_____________Nonlinear HSDT Analysis Ended______________\n');
     fprintf('#######################################################\n\n');
+    
+    % Plot load-displacement curve for center point
+    if strcmp(outMsg, 'outputEnabled')
+        plotLoadDisplacementCurve(centerDisplacementHistory, loadHistory, ...
+                                  BSplinePatch, graph);
+    end
 end
+
+end
+
+
+function plotLoadDisplacementCurve(centerDisplacementHistory, loadHistory, ...
+                                   BSplinePatch, graph)
+%% Plot load-displacement curve for center point of shell
+%
+% This function plots the load factor vs center displacement curve
+% showing the nonlinear behavior during load stepping
+
+% Get load amplitude for scaling
+if isfield(BSplinePatch, 'FGamma')
+    totalLoad = norm(BSplinePatch.FGamma);
+else
+    totalLoad = 1.0; % Default scaling
+end
+
+% Convert to physical units
+if isfield(BSplinePatch, 'NBC') && ~isempty(BSplinePatch.NBC.loadAmplitude)
+    loadAmplitude = BSplinePatch.NBC.loadAmplitude{1};
+else
+    loadAmplitude = -90; % Default for Scordelis-Lo roof
+end
+
+% Create new figure
+figure_handle = figure('Name', 'Load-Displacement Curve (Center Point)', ...
+                      'Position', [100, 100, 800, 600]);
+
+% Plot load-displacement curve
+actualLoads = loadHistory * loadAmplitude;
+displacements_mm = centerDisplacementHistory * 1000; % Convert to mm
+
+plot(abs(displacements_mm), abs(actualLoads), 'o-', ...
+     'LineWidth', 2.5, 'MarkerSize', 8, 'MarkerFaceColor', 'blue', ...
+     'Color', 'blue');
+
+% Formatting
+grid on;
+xlabel('Center Point |w| Displacement [mm]', 'FontSize', 12, 'FontWeight', 'bold');
+ylabel('Applied Load Magnitude [N/m²]', 'FontSize', 12, 'FontWeight', 'bold');
+title('Nonlinear Load-Displacement Curve (HSDT Shell Center)', ...
+      'FontSize', 14, 'FontWeight', 'bold');
+
+% Add annotations
+text(0.7*max(abs(displacements_mm)), 0.3*max(abs(actualLoads)), ...
+     sprintf('Final displacement: %.3f mm\nFinal load: %.1f N/m²', ...
+             abs(displacements_mm(end)), abs(actualLoads(end))), ...
+     'FontSize', 10, 'BackgroundColor', 'white', 'EdgeColor', 'black');
+
+% Enhance plot appearance
+set(gca, 'FontSize', 11);
+set(gca, 'LineWidth', 1.2);
+box on;
+
+% Add gradient to show loading direction
+hold on;
+for i = 1:length(displacements_mm)-1
+    plot(abs(displacements_mm(i:i+1)), abs(actualLoads(i:i+1)), ...
+         'Color', [0, 0, 1-0.1*i/length(displacements_mm)], 'LineWidth', 2);
+end
+hold off;
+
+% Display curve characteristics
+fprintf('\n=== Load-Displacement Curve Analysis ===\n');
+fprintf('Center point coordinates: CP(%d,%d)\n', ...
+        ceil(size(BSplinePatch.CP,1)/2), ceil(size(BSplinePatch.CP,2)/2));
+fprintf('Maximum displacement: %.6f mm\n', max(abs(displacements_mm)));
+fprintf('Maximum load: %.1f N/m²\n', max(abs(actualLoads)));
+
+% Check for nonlinear behavior
+if length(displacements_mm) > 1
+    % Linear stiffness from first two points
+    linearStiffness = (actualLoads(2) - actualLoads(1)) / ...
+                     (displacements_mm(2) - displacements_mm(1));
+    
+    % Final stiffness from last two points  
+    finalStiffness = (actualLoads(end) - actualLoads(end-1)) / ...
+                    (displacements_mm(end) - displacements_mm(end-1));
+    
+    stiffnessRatio = finalStiffness / linearStiffness;
+    
+    fprintf('Initial stiffness: %.2e N/mm/m²\n', linearStiffness);
+    fprintf('Final stiffness: %.2e N/mm/m²\n', finalStiffness);
+    fprintf('Stiffness ratio (final/initial): %.3f\n', stiffnessRatio);
+    
+    if stiffnessRatio < 0.8
+        fprintf('*** Significant stiffness softening detected ***\n');
+    elseif stiffnessRatio > 1.2
+        fprintf('*** Significant stiffness hardening detected ***\n');
+    else
+        fprintf('Moderate nonlinear stiffness change\n');
+    end
+end
+
+fprintf('==========================================\n\n');
 
 end

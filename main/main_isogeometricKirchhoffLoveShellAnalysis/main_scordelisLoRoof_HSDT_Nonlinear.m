@@ -255,7 +255,8 @@ fprintf('=== Starting Linear HSDT Analysis (for comparison) ===\n');
 fprintf('\n=== Starting Nonlinear HSDT Analysis ===\n');
 plot_IGANonlinear = 'undefined';  % No plotting during iterations for simplicity
 
-[dHatNonlinear_HSDT, CPHistory, resHistory, isConverged, BSplinePatch_updated, minElSize_NL] = ...
+[dHatNonlinear_HSDT, CPHistory, resHistory, isConverged, BSplinePatch_updated, minElSize_NL, ...
+ centerDisplacementHistory, loadHistory] = ...
     solve_IGAHSDTShellNLinear...
     (BSplinePatch, propNLinearAnalysis, solve_LinearSystem, ...
     plot_IGANonlinear, graph, 'outputEnabled');
@@ -312,6 +313,19 @@ else
     fprintf('Geometric nonlinearity effects are moderate (<5%% difference)\n');
 end
 
+% Center point analysis
+centerCP_xi = ceil(nxi / 2);
+centerCP_eta = ceil(neta / 2);
+centerCP_index = (centerCP_eta - 1) * nxi + centerCP_xi;
+
+fprintf('\n--- Center Point Analysis ---\n');
+fprintf('Center control point: CP(%d,%d) = Index %d\n', centerCP_xi, centerCP_eta, centerCP_index);
+fprintf('Linear center w: %.6e\n', w_linear(centerCP_index));
+fprintf('Nonlinear center w: %.6e\n', w_nonlinear(centerCP_index));
+fprintf('Center displacement difference: %.1f%%\n', ...
+        100 * (w_nonlinear(centerCP_index) - w_linear(centerCP_index)) / w_linear(centerCP_index));
+fprintf('Final center displacement: %.3f mm\n', abs(centerDisplacementHistory(end)) * 1000);
+
 %% Plot convergence history
 figure(graph.index)
 semilogy(1:size(resHistory,1), resHistory, 'LineWidth', 1.5);
@@ -322,7 +336,9 @@ grid on;
 legend(arrayfun(@(x) sprintf('Load Step %d', x), 1:propNLinearAnalysis.noLoadSteps, 'UniformOutput', false));
 graph.index = graph.index + 1;
 
-%% Plot load-displacement curve
+%% Additional analysis plots
+
+% Plot comparison: maximum displacement vs center displacement
 figure(graph.index)
 loadFactors = linspace(1/propNLinearAnalysis.noLoadSteps, 1, propNLinearAnalysis.noLoadSteps);
 maxDisplacements = zeros(propNLinearAnalysis.noLoadSteps, 1);
@@ -331,22 +347,46 @@ for i = 1:propNLinearAnalysis.noLoadSteps
     maxDisplacements(i) = max(abs(w_step));
 end
 
-plot(maxDisplacements * 1000, loadFactors * FAmp, 'o-', 'LineWidth', 2, 'MarkerSize', 6);
+subplot(2,1,1);
+plot(abs(centerDisplacementHistory) * 1000, loadFactors * FAmp, 'o-', ...
+     'LineWidth', 2, 'MarkerSize', 6, 'Color', 'blue');
+xlabel('Center Point |w| Displacement [mm]');
+ylabel('Applied Load [N/m²]');
+title('Load-Displacement Curve: Center Point (HSDT Nonlinear)');
+grid on;
+
+subplot(2,1,2);
+plot(maxDisplacements * 1000, loadFactors * FAmp, 's-', ...
+     'LineWidth', 2, 'MarkerSize', 6, 'Color', 'red');
 xlabel('Maximum |w| Displacement [mm]');
 ylabel('Applied Load [N/m²]');
-title('Load-Displacement Curve (Nonlinear HSDT)');
+title('Load-Displacement Curve: Maximum Point (HSDT Nonlinear)');
 grid on;
+
 graph.index = graph.index + 1;
+
+%% Comprehensive load-displacement analysis
+fprintf('\n=== Generating Comprehensive Load-Displacement Analysis ===\n');
+plotLoadDisplacementHistory(centerDisplacementHistory, loadHistory, ...
+                           isConverged, BSplinePatch, propNLinearAnalysis, ...
+                           true, w_linear(centerCP_index));
 
 %% Save comprehensive results
 save('scordelisLoRoof_HSDT_Nonlinear_Results.mat', ...
      'dHatLinear_HSDT', 'dHatNonlinear_HSDT', 'CPHistory', 'resHistory', ...
      'isConverged', 'u_linear', 'v_linear', 'w_linear', 'theta_x_linear', 'theta_y_linear', ...
      'u_nonlinear', 'v_nonlinear', 'w_nonlinear', 'theta_x_nonlinear', 'theta_y_nonlinear', ...
+     'centerDisplacementHistory', 'loadHistory', 'centerCP_xi', 'centerCP_eta', ...
      'propNLinearAnalysis', 'parameters', 'CP', 'Xi', 'Eta', 'p', 'q', 'FAmp');
 
 fprintf('\n=== Analysis Completed Successfully ===\n');
 fprintf('Results saved to: scordelisLoRoof_HSDT_Nonlinear_Results.mat\n');
-fprintf('Linear and nonlinear HSDT solutions computed and compared\n\n');
+fprintf('Linear and nonlinear HSDT solutions computed and compared\n');
+fprintf('Load-displacement curves generated for center point analysis\n');
+fprintf('Center point: CP(%d,%d) tracked throughout analysis\n', centerCP_xi, centerCP_eta);
+fprintf('Final center displacement: %.3f mm\n', abs(centerDisplacementHistory(end)) * 1000);
+fprintf('Load steps converged: %d/%d (%.1f%%)\n', sum(isConverged), length(isConverged), ...
+        100*sum(isConverged)/length(isConverged));
+fprintf('\n');
 
 %% end
