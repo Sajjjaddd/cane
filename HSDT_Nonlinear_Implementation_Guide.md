@@ -165,6 +165,14 @@ Newton-Raphson Iteration:
 - Linear vs nonlinear comparison capabilities
 - Stiffness evolution analysis and trend detection
 
+### 7. Thermal Loading System
+**`computeThermalLoadVctIGAHSDTShell.m`**
+- **Pure thermal loading** capability (mechanical loads = 0)
+- **Constant temperature** through thickness (thermal expansion)
+- **Variable temperature** through thickness (thermal bending)
+- Custom temperature profile functions supported
+- Integration with nonlinear solver for thermal-geometric coupling
+
 ## Usage Examples
 
 ### Basic Nonlinear HSDT Analysis with Center Tracking
@@ -210,6 +218,66 @@ run('main_scordelisLoRoof_HSDT_Nonlinear.m');
 % - Convergence history plots
 % - Load-displacement curves
 % - Comprehensive result summaries
+```
+
+### Thermal Loading Analysis
+
+```matlab
+%% Pure thermal loading (constant through thickness)
+% Setup thermal properties
+parameters.alpha = 12e-6;  % Thermal expansion coefficient [1/K]
+T0 = 293.15;               % Reference temperature [K]
+T_applied = 373.15;        % Applied temperature [K]
+
+% Temperature data for constant temperature
+temperatureData.T0 = T0;
+temperatureData.T = T_applied;
+temperatureData.alpha = parameters.alpha;
+temperatureData.throughThickness = 'constant';
+
+% Compute thermal load vector
+FThermal = computeThermalLoadVctIGAHSDTShell...
+    (FThermal, BSplinePatch, [0 1], [0 1], temperatureData, ...
+     'uniform', true, 0, int, 'outputEnabled');
+
+% Set mechanical loads to zero for pure thermal loading
+BSplinePatch.FGamma = zeros(5*noCPs, 1);  % No mechanical loads
+BSplinePatch.FThermal = FThermal;         % Pure thermal loading
+
+% Run thermal analysis with automatic tracking
+[dHat, CPHistory, resHistory, isConverged, BSplinePatch, minElSize, ...
+ centerDisplacementHistory, loadHistory] = solve_IGAHSDTShellNLinear...
+    (BSplinePatch, propNLinearAnalysis, solve_LinearSystem, ...
+     'undefined', graph, 'outputEnabled');
+```
+
+### Variable Through-Thickness Thermal Loading
+
+```matlab
+%% Variable temperature through thickness (thermal bending)
+% Temperature distribution
+T_top = 373.15;     % Top surface temperature [K]
+T_bottom = 313.15;  % Bottom surface temperature [K]
+T_avg = (T_top + T_bottom) / 2;
+
+% Custom temperature profile function
+temperatureProfile = @(z) T_bottom + (T_top - T_bottom) * exp(2*z/thickness)/exp(1);
+
+% Temperature data for variable temperature
+temperatureData.T0 = T0;
+temperatureData.T = T_avg;
+temperatureData.alpha = parameters.alpha;
+temperatureData.throughThickness = 'variable';
+temperatureData.T_top = T_top;
+temperatureData.T_bottom = T_bottom;
+temperatureData.TProfile = temperatureProfile;
+
+% Compute thermal load vector with bending effects
+FThermal = computeThermalLoadVctIGAHSDTShell...
+    (FThermal, BSplinePatch, [0 1], [0 1], temperatureData, ...
+     'gradient', true, 0, int, 'outputEnabled');
+
+% Results include both thermal expansion and thermal bending
 ```
 
 ### Material Parameter Setup
@@ -265,6 +333,9 @@ For a mesh with `N` control points:
 2. **Cylindrical Shell under Pressure**: Validates shear deformation effects
 3. **Spherical Cap under Point Load**: Tests geometric nonlinearity
 4. **Cantilever Plate**: Validates bending-membrane coupling
+5. **Thermal Expansion Test**: Constant temperature thermal loading validation
+6. **Thermal Bending Test**: Variable through-thickness temperature validation
+7. **Thermal-Mechanical Coupling**: Combined thermal and mechanical loading
 
 ### Verification Metrics
 
@@ -311,6 +382,8 @@ The nonlinear HSDT implementation provides a robust framework for large deformat
 - ✅ **Real-time convergence monitoring** with comprehensive visualization
 - ✅ **Linear vs nonlinear comparison** capabilities
 - ✅ **Stiffness evolution analysis** and nonlinearity assessment
+- ✅ **Pure thermal loading** with constant and variable temperature distributions
+- ✅ **Thermal-mechanical coupling** and geometric nonlinearity in thermal problems
 - ✅ **Validated implementation** against standard benchmarks
 - ✅ **Comprehensive documentation** and examples
 
@@ -322,4 +395,12 @@ The nonlinear HSDT implementation provides a robust framework for large deformat
 - **Comparison Tools**: Direct comparison with linear analysis results
 - **Export Capabilities**: All tracking data saved for post-processing
 
-This implementation significantly extends the capabilities of cane Multiphysics for thick shell analysis and large deformation problems while providing immediate visual feedback on nonlinear behavior and maintaining computational efficiency and accuracy.
+### Key Thermal Loading Features:
+- **Pure Thermal Analysis**: Zero mechanical loads (FAmp = 0) with pure thermal effects
+- **Constant Temperature**: Uniform through-thickness heating for thermal expansion analysis
+- **Variable Temperature**: Custom through-thickness profiles for thermal bending analysis
+- **Automatic Thermal Strains**: Membrane and bending thermal strain computation
+- **Temperature Profiles**: Linear, exponential, and custom temperature functions supported
+- **Thermal-Geometric Coupling**: Nonlinear analysis of thermal effects with large deformations
+
+This implementation significantly extends the capabilities of cane Multiphysics for thick shell analysis, large deformation problems, and thermal loading scenarios while providing immediate visual feedback on nonlinear behavior and maintaining computational efficiency and accuracy. The thermal loading capabilities enable analysis of thermal expansion, thermal bending, and thermal-mechanical coupling effects in shell structures.

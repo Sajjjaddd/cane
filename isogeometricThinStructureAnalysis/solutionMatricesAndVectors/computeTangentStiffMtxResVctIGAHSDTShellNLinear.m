@@ -285,11 +285,23 @@ for j = q + 1:numKnots_eta - q - 1
 end
 
 %% 4. Apply load factor to external forces
+
+% Mechanical loads
 if isfield(BSplinePatch, 'FGamma')
-    FExternal = loadFactor * BSplinePatch.FGamma;
+    FMechanical = loadFactor * BSplinePatch.FGamma;
 else
-    FExternal = zeros(numDOFs, 1);
+    FMechanical = zeros(numDOFs, 1);
 end
+
+% Thermal loads (independent of load factor for pure thermal loading)
+if isfield(BSplinePatch, 'FThermal')
+    FThermal = BSplinePatch.FThermal;
+else
+    FThermal = zeros(numDOFs, 1);
+end
+
+% Total external forces
+FExternal = FMechanical + FThermal;
 
 %% 5. Compute residual vector
 residualVct = residualVct - FExternal;
